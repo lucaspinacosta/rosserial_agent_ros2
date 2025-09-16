@@ -1,0 +1,5 @@
+rosserial_agent:
+  ros__parameters:
+    dev: "/dev/ttyACM0"
+    baud: 115200
+    read_buffer_bytes: 4096
