@@ -1,40 +1,53 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-def make_agent(namespace, node_name, dev, baud, rbuf, pfile):
-    return Node(
-        package="rosserial_agent_ros2",
-        executable="rosserial_agent",
-        namespace=namespace,
-        name=node_name,
-        parameters=[{
-            "dev": dev,
-            "baud": int(baud),
-            "read_buffer_bytes": int(rbuf),
-        }, pfile],
-        output="screen",
-    )
-
-
 def generate_launch_description():
+    # Args
     dev1_arg = DeclareLaunchArgument("dev1", default_value="/dev/ttyACM0")
     dev2_arg = DeclareLaunchArgument("dev2", default_value="/dev/ttyACM1")
     baud_arg = DeclareLaunchArgument("baud", default_value="115200")
     buf_arg = DeclareLaunchArgument("read_buffer_bytes", default_value="2048")
-    params_arg = DeclareLaunchArgument("params_file", default_value="",
-                                       description="YAML params file")
+    params_arg = DeclareLaunchArgument("params_file", default_value="")
 
-    dev1 = LaunchConfiguration("dev1")
-    dev2 = LaunchConfiguration("dev2")
-    baud = LaunchConfiguration("baud")
-    rbuf = LaunchConfiguration("read_buffer_bytes")
-    pfile = LaunchConfiguration("params_file")
+    def launch_setup(context, *args, **kwargs):
+        # Common params (as LaunchConfiguration objects; do NOT cast to int())
+        common = {
+            "baud": LaunchConfiguration("baud"),
+            "read_buffer_bytes": LaunchConfiguration("read_buffer_bytes"),
+        }
+        def params_list(dev): return [{"dev": dev, **common}]
+        pfile = LaunchConfiguration("params_file").perform(context)
+        if pfile:
+            # Append YAML if provided
+            def with_yaml(pl):
+                out = list(pl)
+                out.append(pfile)
+                return out
+        else:
+            def with_yaml(pl): return pl  # no-op
 
-    agent1 = make_agent("board1", "rosserial_agent_1", dev1, baud, rbuf, pfile)
-    agent2 = make_agent("board2", "rosserial_agent_2", dev2, baud, rbuf, pfile)
+        agent1 = Node(
+            package="rosserial_agent_ros2",
+            executable="rosserial_agent",
+            namespace="board1",
+            name="rosserial_agent_1",
+            parameters=with_yaml(params_list(LaunchConfiguration("dev1"))),
+            output="screen",
+        )
+        agent2 = Node(
+            package="rosserial_agent_ros2",
+            executable="rosserial_agent",
+            namespace="board2",
+            name="rosserial_agent_2",
+            parameters=with_yaml(params_list(LaunchConfiguration("dev2"))),
+            output="screen",
+        )
+        return [agent1, agent2]
 
-    return LaunchDescription([dev1_arg, dev2_arg, baud_arg, buf_arg, params_arg,
-                              agent1, agent2])
+    return LaunchDescription([
+        dev1_arg, dev2_arg, baud_arg, buf_arg, params_arg,
+        OpaqueFunction(function=launch_setup),
+    ])
