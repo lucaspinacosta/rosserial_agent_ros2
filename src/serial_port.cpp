@@ -4,7 +4,8 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <cstring>
-#include <string>
+#include <chrono>
+#include <thread>
 
 namespace
 {
@@ -30,7 +31,6 @@ namespace
         case 921600:
             return B921600;
 #endif
-
         default:
             return B115200;
         }
@@ -53,6 +53,7 @@ bool SerialPort::open(const std::string &device, int baud)
         return false;
     }
 
+    // switch to blocking reads (VMIN/VTIME handle latency)
     int flags = fcntl(fd_, F_GETFL, 0);
     fcntl(fd_, F_SETFL, flags & ~O_NONBLOCK);
     return true;
@@ -63,26 +64,25 @@ bool SerialPort::configure_termios(int baud)
     struct termios tio{};
     if (tcgetattr(fd_, &tio) != 0)
         return false;
+
     cfmakeraw(&tio);
     tio.c_cflag |= (CLOCAL | CREAD);
-    tio.c_cflag &= ~CRTSCTS; // no HW flow control
-    tio.c_cflag &= ~PARENB;  // no parity
-    tio.c_cflag &= ~CSTOPB;  // 1 stop bit
+    tio.c_cflag &= ~CRTSCTS; // no HW flow
+    tio.c_cflag &= ~PARENB;  // 8N1
+    tio.c_cflag &= ~CSTOPB;
     tio.c_cflag &= ~CSIZE;
-    tio.c_cflag |= CS8; // 8 bits
+    tio.c_cflag |= CS8;
 
+    // VMIN/VTIME: return quickly; adjust if you want
     tio.c_cc[VMIN] = 0;
-    tio.c_cc[VTIME] = 0;
+    tio.c_cc[VTIME] = 1; // 0.1 s max block
 
     speed_t spd = baud_to_flag(baud);
-
     cfsetispeed(&tio, spd);
     cfsetospeed(&tio, spd);
 
     if (tcsetattr(fd_, TCSANOW, &tio) != 0)
         return false;
-
-    // flush
     tcflush(fd_, TCIOFLUSH);
     return true;
 }
@@ -94,7 +94,7 @@ ssize_t SerialPort::read(uint8_t *buf, size_t maxlen)
     return ::read(fd_, buf, maxlen);
 }
 
-ssize_t SerialPort::write(const uint8_t* buf, size_t len)
+ssize_t SerialPort::write(const uint8_t *buf, size_t len)
 {
     if (fd_ < 0)
         return -1;
@@ -103,9 +103,47 @@ ssize_t SerialPort::write(const uint8_t* buf, size_t len)
 
 void SerialPort::close()
 {
-    if (fd_ >=0)
+    if (fd_ >= 0)
     {
         ::close(fd_);
         fd_ = -1;
     }
+}
+
+void SerialPort::pulse_dtr(int low_ms, int after_ms)
+{
+    if (fd_ < 0)
+        return;
+#ifdef TIOCM_DTR
+    int status = 0;
+    if (ioctl(fd_, TIOCMGET, &status) == 0)
+    {
+        status &= ~TIOCM_DTR;
+        ioctl(fd_, TIOCMSET, &status);
+        std::this_thread::sleep_for(std::chrono::milliseconds(low_ms));
+        status |= TIOCM_DTR;
+        ioctl(fd_, TIOCMSET, &status);
+    }
+#endif
+    if (after_ms > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(after_ms));
+}
+
+void SerialPort::pulse_rts(int low_ms, int after_ms)
+{
+    if (fd_ < 0)
+        return;
+#ifdef TIOCM_RTS
+    int status = 0;
+    if (ioctl(fd_, TIOCMGET, &status) == 0)
+    {
+        status &= ~TIOCM_RTS;
+        ioctl(fd_, TIOCMSET, &status);
+        std::this_thread::sleep_for(std::chrono::milliseconds(low_ms));
+        status |= TIOCM_RTS;
+        ioctl(fd_, TIOCMSET, &status);
+    }
+#endif
+    if (after_ms > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(after_ms));
 }

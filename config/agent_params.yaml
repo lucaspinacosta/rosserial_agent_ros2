@@ -1,5 +1,5 @@
 rosserial_agent:
   ros__parameters:
-    dev: "/dev/ttyACM0"
+    dev: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0042_959313239313519102B0-if00"
     baud: 115200
     read_buffer_bytes: 4096
