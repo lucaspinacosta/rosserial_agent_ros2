@@ -1,5 +1,25 @@
-rosserial_agent:
-  ros__parameters:
-    dev: "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0042_959313239313519102B0-if00"
-    baud: 115200
-    read_buffer_bytes: 4096
+board1:
+  rosserial_agent_1:
+    ros__parameters:
+      reset_on_open: true
+      boot_quiet_ms: 1500
+      dump_rx: true
+      dump_tx: true
+      sensor_reliable: true
+      static_topics:
+        # - "id=auto,name=/statusjoy,type=std_msgs/UInt8"
+        - "id=auto,name=/joints,type=std_msgs/Float32MultiArray"
+        - "id=auto,name=/encoders,type=std_msgs/Float32MultiArray"
+board2:
+  rosserial_agent_2:
+    ros__parameters:
+      reset_on_open: true
+      boot_quiet_ms: 1500
+      dump_rx: true
+      dump_tx: true
+      sensor_reliable: true
+      static_topics:
+        - "id=auto,name=/statusjoy,type=std_msgs/UInt8" # 0x007D
+        - "id=auto,name=/encoders,type=std_msgs/Float32MultiArray" # if you see another id carrying Float32 arrays, add it here
+        # when you want ROS2->MCU for telejoy, add:
+        - "id=auto,name=/telejoy,type=std_msgs/Int8MultiArray"
